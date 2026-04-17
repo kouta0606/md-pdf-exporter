@@ -34,46 +34,41 @@
 
 - Windows 10/11 (64-bit)
 - **.NET Runtimeは不要** - 単一実行ファイルに全て含まれています
+- **WebView2 Runtime** - Windows 11では標準搭載、それ以外は[こちら](https://go.microsoft.com/fwlink/p/?LinkId=2124703)から自動インストール（約30秒）
 - Microsoft Print to PDF（Windows標準機能）
 
 ## 🔧 インストール
 
-### 方法1: リリースからダウンロード（推奨）
-
-1. [Releases](https://github.com/kouta0606/md-pdf-exporter/releases)から最新版の`MK_to_PDF.exe`をダウンロード
-2. 任意の場所に配置（デスクトップやドキュメントフォルダなど）
-3. `MK_to_PDF.exe`をダブルクリックで起動
-
-**それだけです！** インストール不要、設定ファイル不要、追加ダウンロード不要です。
-
-### 方法2: ソースからビルド
-
-```bash
-# リポジトリをクローン
-git clone https://github.com/kouta0606/md-pdf-exporter.git
-cd md-pdf-exporter/MK_to_PDF
-
-# NuGetパッケージを復元
-dotnet restore
-
-# 実行
-dotnet run
-```
-
-### 方法3: 単一実行ファイルとして発行
+### 方法1: 単一実行ファイルとして発行（推奨）
 
 ```powershell
-# プロジェクトディレクトリに移動
-cd md-pdf-exporter/MK_to_PDF
+# リポジトリをクローン
+git clone https://github.com/kouta0606/md-pdf-exporter.git
+cd md-pdf-exporter
 
 # 単一実行ファイルを生成
 dotnet publish -c Release -r win-x64 --self-contained
 
 # 実行ファイルは以下に作成されます:
-# bin\Release\net10.0-windows\win-x64\publish\MK_to_PDF.exe
+# MK_to_PDF\bin\Release\net10.0-windows\win-x64\publish\MK_to_PDF.exe
 ```
 
-生成された`MK_to_PDF.exe`（約65MB）だけで動作します。
+生成された`MK_to_PDF.exe`（約62MB）を任意の場所に配置してダブルクリックで起動できます。  
+**インストール不要、設定ファイル不要、.NET Runtime不要**で動作します。
+
+### 方法2: 開発モードで実行
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/kouta0606/md-pdf-exporter.git
+cd md-pdf-exporter
+
+# NuGetパッケージを復元
+dotnet restore
+
+# 実行
+dotnet run --project MK_to_PDF
+```
 
 ## 📖 使い方
 
