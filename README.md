@@ -39,13 +39,27 @@
 
 ## 🔧 インストール
 
-### バイナリからインストール
+### 方法1: 簡単インストール（推奨）
+
+PowerShellで以下のコマンドを実行するだけ！
+
+```powershell
+# 1. アプリケーションを公開
+.\publish.ps1
+
+# 2. デスクトップにショートカット作成
+.\create-shortcut.ps1
+```
+
+これで、デスクトップアイコンをダブルクリックするだけでアプリが起動します！
+
+### 方法2: バイナリからインストール
 
 1. [Releases](https://github.com/kouta0606/md-pdf-exporter/releases)から最新版をダウンロード
 2. ZIPファイルを解凍
 3. `MK_to_PDF.exe`を実行
 
-### ソースからビルド
+### 方法3: ソースからビルド
 
 ```bash
 # リポジトリをクローン
@@ -57,6 +71,16 @@ dotnet build
 
 # 実行
 dotnet run
+```
+
+### 方法4: 手動で公開
+
+```powershell
+# 自己完結型の実行ファイルを作成
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+# 実行ファイルは以下に作成されます:
+# bin\Release\net10.0-windows\win-x64\publish\MK_to_PDF.exe
 ```
 
 ## 📖 使い方
