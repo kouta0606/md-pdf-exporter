@@ -36,14 +36,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="app.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <Resource Include="app.ico" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Markdig" Version="0.40.0" />
-    <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
   </ItemGroup>
 
 </Project>

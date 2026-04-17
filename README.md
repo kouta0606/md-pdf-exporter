@@ -6,8 +6,6 @@
 
 マークダウンファイルをリアルタイムでプレビューし、PDFに出力できるWPFアプリケーションです。日本語の文字コード（UTF-8、Shift-JIS、EUC-JP、ISO-2022-JP）に対応しています。
 
-![Screenshot](docs/screenshot.png)
-
 ## ✨ 主な機能
 
 - 📂 **マークダウンファイルの読み込み** - .md, .markdownファイルに対応
@@ -16,6 +14,7 @@
 - 📄 **PDF出力** - Microsoft Print to PDFを使用して簡単にPDF化
 - 🎨 **モダンなUI** - 使いやすく洗練されたインターフェース
 - ✏️ **完全なMarkdown対応** - Markdigライブラリによる豊富な記法サポート
+- 📦 **単一実行ファイル** - .exe一つで動作、インストール不要
 
 ## 🚀 対応しているMarkdown記法
 
@@ -33,55 +32,48 @@
 
 ## 📋 必要要件
 
-- Windows 10/11
-- .NET 10 Runtime
+- Windows 10/11 (64-bit)
+- **.NET Runtimeは不要** - 単一実行ファイルに全て含まれています
 - Microsoft Print to PDF（Windows標準機能）
 
 ## 🔧 インストール
 
-### 方法1: 簡単インストール（推奨）
+### 方法1: リリースからダウンロード（推奨）
 
-PowerShellで以下のコマンドを実行するだけ！
+1. [Releases](https://github.com/kouta0606/md-pdf-exporter/releases)から最新版の`MK_to_PDF.exe`をダウンロード
+2. 任意の場所に配置（デスクトップやドキュメントフォルダなど）
+3. `MK_to_PDF.exe`をダブルクリックで起動
 
-```powershell
-# 1. アプリケーションを公開
-.\publish.ps1
+**それだけです！** インストール不要、設定ファイル不要、追加ダウンロード不要です。
 
-# 2. デスクトップにショートカット作成
-.\create-shortcut.ps1
-```
-
-これで、デスクトップアイコンをダブルクリックするだけでアプリが起動します！
-
-### 方法2: バイナリからインストール
-
-1. [Releases](https://github.com/kouta0606/md-pdf-exporter/releases)から最新版をダウンロード
-2. ZIPファイルを解凍
-3. `MK_to_PDF.exe`を実行
-
-### 方法3: ソースからビルド
+### 方法2: ソースからビルド
 
 ```bash
 # リポジトリをクローン
 git clone https://github.com/kouta0606/md-pdf-exporter.git
-cd md-pdf-exporter
+cd md-pdf-exporter/MK_to_PDF
 
-# ビルド
-dotnet build
+# NuGetパッケージを復元
+dotnet restore
 
 # 実行
 dotnet run
 ```
 
-### 方法4: 手動で公開
+### 方法3: 単一実行ファイルとして発行
 
 ```powershell
-# 自己完結型の実行ファイルを作成
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+# プロジェクトディレクトリに移動
+cd md-pdf-exporter/MK_to_PDF
+
+# 単一実行ファイルを生成
+dotnet publish -c Release -r win-x64 --self-contained
 
 # 実行ファイルは以下に作成されます:
 # bin\Release\net10.0-windows\win-x64\publish\MK_to_PDF.exe
 ```
+
+生成された`MK_to_PDF.exe`（約65MB）だけで動作します。
 
 ## 📖 使い方
 
@@ -102,16 +94,12 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 | **EUC-JP** | Unix/Linuxシステムで使用される日本語文字コード |
 | **ISO-2022-JP (JIS)** | メールなどで使用される日本語文字コード |
 
-### キーボードショートカット
-
-現在のバージョンではマウス操作のみサポートしています。
-
 ## 🛠️ 技術スタック
 
-- **フレームワーク**: .NET 10
+- **フレームワーク**: .NET 10 (プレビュー)
 - **UI**: WPF (Windows Presentation Foundation)
 - **Markdownパーサー**: [Markdig](https://github.com/xoofx/markdig) v0.40.0
-- **文字コード**: System.Text.Encoding.CodePages v9.0.0
+- **配布形式**: 単一実行ファイル（Self-Contained Deployment）
 
 ## 📂 プロジェクト構成
 
@@ -120,6 +108,9 @@ md-pdf-exporter/
 ├── MK_to_PDF/
 │   ├── MainWindow.xaml        # UIデザイン
 │   ├── MainWindow.xaml.cs     # メインロジック
+│   ├── App.xaml               # アプリケーション設定
+│   ├── App.xaml.cs            # アプリケーションロジック
+│   ├── app.ico                # アプリケーションアイコン
 │   └── MK_to_PDF.csproj       # プロジェクトファイル
 ├── README.md
 └── LICENSE
@@ -128,6 +119,15 @@ md-pdf-exporter/
 ## 🐛 既知の問題
 
 - PDF出力はWindowsの印刷ダイアログを使用するため、自動保存には対応していません
+- WebView2を使用していないため、一部の高度なHTML機能は制限されます
+
+## 📝 今後の予定
+
+- [ ] QuestPDFを使用した直接PDF生成機能
+- [ ] ダークモード対応
+- [ ] 最近開いたファイルの履歴
+- [ ] ドラッグ&ドロップでファイルを開く
+- [ ] カスタムCSSテーマのサポート
 
 ## 🤝 コントリビューション
 
@@ -138,6 +138,10 @@ md-pdf-exporter/
 3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
 4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
 5. プルリクエストを作成
+
+## 📄 ライセンス
+
+このプロジェクトはMITライセンスの下で公開されています。詳細は[LICENSE](LICENSE)ファイルをご覧ください。
 
 ## 👤 作者
 

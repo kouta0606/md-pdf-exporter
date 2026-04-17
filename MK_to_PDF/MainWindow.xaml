@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Markdown to PDF Converter" Height="750" Width="1100"
         WindowStartupLocation="CenterScreen"
-        Icon="app.ico">
+        Icon="pack://application:,,,/app.ico">
 
     <Window.Resources>
         <!-- モダンなボタンスタイル -->
