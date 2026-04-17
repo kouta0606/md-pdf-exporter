@@ -111,29 +111,6 @@ md-pdf-exporter/
 └── LICENSE
 ```
 
-## 🐛 既知の問題
-
-- PDF出力はWindowsの印刷ダイアログを使用するため、自動保存には対応していません
-- WebView2を使用していないため、一部の高度なHTML機能は制限されます
-
-## 📝 今後の予定
-
-- [ ] QuestPDFを使用した直接PDF生成機能
-- [ ] ダークモード対応
-- [ ] 最近開いたファイルの履歴
-- [ ] ドラッグ&ドロップでファイルを開く
-- [ ] カスタムCSSテーマのサポート
-
-## 🤝 コントリビューション
-
-プルリクエストを歓迎します！大きな変更を行う場合は、まずissueを開いて変更内容を議論してください。
-
-1. このリポジトリをフォーク
-2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
-3. 変更をコミット (`git commit -m 'Add some amazing feature'`)
-4. ブランチにプッシュ (`git push origin feature/amazing-feature`)
-5. プルリクエストを作成
-
 ## 📄 ライセンス
 
 このプロジェクトはMITライセンスの下で公開されています。詳細は[LICENSE](LICENSE)ファイルをご覧ください。
