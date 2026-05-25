@@ -67,7 +67,13 @@ namespace MK_to_PDF
                 PreviewBrowser.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
                 PreviewBrowser.CoreWebView2.Settings.AreDevToolsEnabled = true; // F12で開発者ツール
 
+                // ダークモードをWebView2に適用しない（OSのダークモード設定に関わらず常にライト表示）
+                PreviewBrowser.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Light;
+
                 System.Diagnostics.Debug.WriteLine("[WebView2] 初期化完了");
+
+                // 初期化完了後にプレビューを表示
+                RefreshPreview();
             }
             catch (Exception ex)
             {
@@ -91,11 +97,14 @@ namespace MK_to_PDF
             $@"<html>
 <head>
     <meta charset='utf-8'/>
+    <meta name='color-scheme' content='light'/>
     <style>
         body {{ 
             font-family: 'Segoe UI', Meiryo, sans-serif; 
             padding: 20px;
             line-height: 1.6;
+            background-color: #ffffff;
+            color: #1a1a1a;
         }}
         code {{ 
             background-color: #f4f4f4; 
@@ -147,23 +156,34 @@ namespace MK_to_PDF
             border-collapse: collapse; 
             width: 100%;
             margin: 10px 0;
-            /* テーブルが途中で分割されないようにする */
-            page-break-inside: avoid;
-            break-inside: avoid;
+            table-layout: auto;
+            word-break: break-word;
+            overflow-wrap: break-word;
         }}
         table, th, td {{ 
             border: 1px solid #ddd; 
         }}
         th, td {{ 
-            padding: 8px; 
+            padding: 6px 8px; 
             text-align: left;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            min-width: 40px;
+            max-width: 400px;
         }}
         th {{
-            background-color: #f4f4f4;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            white-space: nowrap;
             /* テーブルヘッダーの背景色も印刷 */
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
             color-adjust: exact;
+        }}
+        /* テーブルをページ幅に収める */
+        .table-wrapper {{
+            width: 100%;
+            overflow-x: auto;
         }}
         /* 見出しの直後で改ページしない（見出しが孤立しないようにする） */
         h1, h2, h3, h4, h5, h6 {{
@@ -253,6 +273,29 @@ namespace MK_to_PDF
             /* 印刷時はページ境界マーカーを非表示 */
             .page-boundary {{
                 display: none;
+            }}
+            /* 印刷時の表スタイル */
+            table {{
+                width: 100%;
+                table-layout: auto;
+                font-size: 85%;
+                word-break: break-word;
+                overflow-wrap: break-word;
+            }}
+            th, td {{
+                padding: 4px 6px;
+                word-break: break-word;
+                overflow-wrap: break-word;
+                max-width: 200px;
+            }}
+            /* 大きな表はページをまたいで表示（break-inside: avoidを外す） */
+            table {{
+                page-break-inside: auto;
+                break-inside: auto;
+            }}
+            tr {{
+                page-break-inside: avoid;
+                break-inside: avoid;
             }}
         }}
     </style>
