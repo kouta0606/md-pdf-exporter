@@ -458,6 +458,61 @@ namespace MK_to_PDF
             currentFilePath = null;
         }
 
+        private void SaveMarkdown_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(MarkdownEditor.Text))
+            {
+                MessageBox.Show("保存するコンテンツがありません。", "情報", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                // ファイル保存ダイアログを表示
+                var sfd = new Microsoft.Win32.SaveFileDialog()
+                {
+                    Filter = "Markdown files (*.md)|*.md|Markdown files (*.markdown)|*.markdown|All files (*.*)|*.*",
+                    Title = "Markdownファイルを保存",
+                    FileName = string.IsNullOrEmpty(currentFilePath) 
+                        ? "document.md" 
+                        : System.IO.Path.GetFileNameWithoutExtension(currentFilePath) + ".md",
+                    DefaultExt = ".md"
+                };
+
+                if (sfd.ShowDialog() == true)
+                {
+                    // 選択されたエンコーディングを取得
+                    var selectedItem = EncodingComboBox.SelectedItem as EncodingItem;
+                    var encoding = selectedItem?.Encoding ?? Encoding.UTF8;
+
+                    // Markdownテキストをファイルに保存
+                    System.IO.File.WriteAllText(sfd.FileName, MarkdownEditor.Text, encoding);
+
+                    // 保存成功のメッセージ
+                    var fileInfo = new System.IO.FileInfo(sfd.FileName);
+                    MessageBox.Show(
+                        $"Markdownの保存が完了しました。\n\n" +
+                        $"保存先: {sfd.FileName}\n" +
+                        $"ファイルサイズ: {fileInfo.Length} bytes\n" +
+                        $"文字コード: {selectedItem?.Name ?? "UTF-8"}",
+                        "保存完了",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+
+                    System.Diagnostics.Debug.WriteLine($"[Markdown保存] 保存完了: {sfd.FileName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Markdownの保存に失敗しました。\n\n{ex.Message}",
+                    "エラー",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                System.Diagnostics.Debug.WriteLine($"[Markdown保存] エラー: {ex}");
+            }
+        }
+
         private string SimpleMarkdownToHtml(string markdown)
         {
             if (string.IsNullOrEmpty(markdown)) return string.Empty;
@@ -477,8 +532,13 @@ namespace MK_to_PDF
 
             var html = Markdown.ToHtml(markdown, pipeline);
 
-            // コードブロックに動的なフォントサイズを適用
+            // インデント型コードブロック（<pre><code>）を除去し、通常の段落に戻す
+            // ただし、フェンス型（```）コードブロックは保持する
+            html = RemoveIndentedCodeBlocks(html);
             html = ApplyDynamicCodeBlockFontSize(html);
+
+            // 段落内の改行を<br>タグに置換（HTML内のテキストを処理）
+            html = ConvertLineBreaksToHtml(html);
 
             // ページ境界表示が有効な場合、HTMLにマーカーを挿入
             if (showPageBoundaries)
@@ -574,6 +634,98 @@ namespace MK_to_PDF
             }
 
             return baseFontSize;
+        }
+
+        private string ConvertLineBreaksToHtml(string html)
+        {
+            // HTML内の<p>...</p>タグの内部における改行を<br>タグに置換
+            // <pre>と<code>内は処理しない
+            var result = new StringBuilder();
+            var reader = new System.IO.StringReader(html);
+            string? line;
+            var inPre = false;
+            var inCode = false;
+            var inParagraph = false;
+            var paragraphContent = new StringBuilder();
+
+            while ((line = reader.ReadLine()) != null)
+            {
+                var trimmed = line.Trim();
+
+                // <pre>の開始と終了を追跡
+                if (trimmed.StartsWith("<pre"))
+                {
+                    inPre = true;
+                }
+                if (trimmed.EndsWith("</pre>"))
+                {
+                    inPre = false;
+                }
+
+                // <code>の開始と終了を追跡
+                if (trimmed.StartsWith("<code"))
+                {
+                    inCode = true;
+                }
+                if (trimmed.EndsWith("</code>"))
+                {
+                    inCode = false;
+                }
+
+                // <p>の開始と終了を追跡
+                if (trimmed.StartsWith("<p") && !inPre)
+                {
+                    inParagraph = true;
+                    // <p>タグ自体のしまい括弧までを含む
+                    var closingIndex = trimmed.IndexOf(">");
+                    if (closingIndex >= 0)
+                    {
+                        paragraphContent.Append(trimmed.Substring(0, closingIndex + 1));
+                        paragraphContent.Append(trimmed.Substring(closingIndex + 1));
+                    }
+                }
+                else if (trimmed.EndsWith("</p>") && inParagraph)
+                {
+                    inParagraph = false;
+                    paragraphContent.Append(line);
+
+                    // 段落の完全な内容を処理
+                    var fullParagraph = paragraphContent.ToString();
+
+                    // 段落内の改行（\n）を<br>に置換（ただしタグは除く）
+                    var pTagMatch = System.Text.RegularExpressions.Regex.Match(
+                        fullParagraph,
+                        @"<p(.*?)>(.*?)</p>",
+                        System.Text.RegularExpressions.RegexOptions.Singleline
+                    );
+
+                    if (pTagMatch.Success)
+                    {
+                        var attrs = pTagMatch.Groups[1].Value;
+                        var content = pTagMatch.Groups[2].Value;
+
+                        // テキスト内の改行を<br>に置換
+                        content = System.Text.RegularExpressions.Regex.Replace(content, @"\n(?!</?)", "<br />\n");
+                        result.AppendLine($"<p{attrs}>{content}</p>");
+                    }
+                    else
+                    {
+                        result.AppendLine(fullParagraph);
+                    }
+
+                    paragraphContent.Clear();
+                }
+                else if (inParagraph)
+                {
+                    paragraphContent.AppendLine(line);
+                }
+                else
+                {
+                    result.AppendLine(line);
+                }
+            }
+
+            return result.ToString();
         }
 
         private string InsertPageBoundaryMarkers(string html)
@@ -945,6 +1097,31 @@ namespace MK_to_PDF
                 await Task.Delay(50);
                 isSyncingScroll = false;
             }
+        }
+
+        private string RemoveIndentedCodeBlocks(string html)
+        {
+            // ユーザーの要望: ```がない限りはコードブロックではなく、通常テキストとして扱う
+            // ただし、意図的に```で囲まれたコードブロックは保持する
+
+            // <pre><code>.....</code></pre> パターンで、クラス属性がない（言語指定がない）場合は
+            // インデント型コードブロックと判定し、段落に戻す
+            var pattern = new System.Text.RegularExpressions.Regex(
+                @"<pre><code>(?!hljs|language-)(?<code>[\s\S]*?)</code></pre>",
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            );
+
+            var result = pattern.Replace(html, match =>
+            {
+                var code = match.Groups["code"].Value;
+                // HTMLエンティティをデコード
+                code = System.Web.HttpUtility.HtmlDecode(code);
+                // 改行と前後の空白を保持しながら段落に変換
+                code = code.Replace("\n", "<br />\n");
+                return $"<p>{code}</p>";
+            });
+
+            return result;
         }
 
         private class EncodingItem

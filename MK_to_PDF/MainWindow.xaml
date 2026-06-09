@@ -151,6 +151,11 @@
                                 Click="ClearFile_Click" 
                                 Style="{StaticResource DangerButton}"/>
 
+                        <Button x:Name="SaveMarkdownButton" 
+                                Content="💾 Markdown保存" 
+                                Click="SaveMarkdown_Click" 
+                                Style="{StaticResource ModernButton}"/>
+
                         <Button x:Name="ExportPdfButton" 
                                 Content="📄 PDF出力" 
                                 Click="ExportPdf_Click" 
