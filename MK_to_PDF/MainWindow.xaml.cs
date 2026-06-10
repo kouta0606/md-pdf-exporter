@@ -532,13 +532,15 @@ namespace MK_to_PDF
 
             var html = Markdown.ToHtml(markdown, pipeline);
 
-            // インデント型コードブロック（<pre><code>）を除去し、通常の段落に戻す
-            // ただし、フェンス型（```）コードブロックは保持する
-            html = RemoveIndentedCodeBlocks(html);
+            // ⚠️ インデント型コード判定機能は一時、无效化
+            // HTML構造の破壊の原因となったため、安定性を優先
+            // html = RemoveIndentedCodeBlocks(html);
+
             html = ApplyDynamicCodeBlockFontSize(html);
 
-            // 段落内の改行を<br>タグに置換（HTML内のテキストを処理）
-            html = ConvertLineBreaksToHtml(html);
+            // ⚠️ 段落改行処理は一時的に無効化
+            // HTML構造を破壊しているため
+            // html = ConvertLineBreaksToHtml(html);
 
             // ページ境界表示が有効な場合、HTMLにマーカーを挿入
             if (showPageBoundaries)
