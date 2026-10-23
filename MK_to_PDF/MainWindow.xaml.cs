@@ -11,16 +11,28 @@ namespace MK_to_PDF
     /// </summary>
     public partial class MainWindow : Window
     {
+        private static readonly string settingsFilePath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "MK_to_PDF_設定",
+            "settings.json");
         private string? currentFilePath;
-        private bool showPageBoundaries = true; // デフォルトで表示
+        private string? saveDirectory;
+        private string pdfHeader = string.Empty;
+        private string pdfHeaderAlignment = "left";
+        private string pdfFooter = string.Empty;
+        private string pdfFooterAlignment = "left";
+        private bool printPageNumbers;
+        private bool showPageBoundaries = false;
         private System.Windows.Threading.DispatcherTimer? debounceTimer;
         private bool isWebView2Initialized = false;
-        private bool isScrollSyncEnabled = true; // スクロール同期を有効化
-        private bool isSyncingScroll = false; // 同期中フラグ（無限ループ防止）
+        private bool isScrollSyncEnabled = true;
+        private ScrollViewer? markdownEditorScrollViewer;
+        private double lastPreviewScrollPercentage;
 
         public MainWindow()
         {
             InitializeComponent();
+            LoadSettings();
             // Shift-JIS、EUC-JP、ISO-2022-JPなどのエンコーディングを使用可能にする
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -42,7 +54,7 @@ namespace MK_to_PDF
                 RefreshPreview();
             };
 
-            // WebView2の初期化
+            // ClearFile_Click
             InitializeWebView2Async();
 
             // マークダウンエディタのスクロールイベントを追加（Loaded後に設定）
@@ -51,9 +63,289 @@ namespace MK_to_PDF
                 var scrollViewer = FindScrollViewer(MarkdownEditor);
                 if (scrollViewer != null)
                 {
+                    markdownEditorScrollViewer = scrollViewer;
                     scrollViewer.ScrollChanged += MarkdownEditor_ScrollChanged;
                 }
             };
+        }
+
+        private void LoadSettings()
+        {
+            if (!System.IO.File.Exists(settingsFilePath))
+            {
+                return;
+            }
+
+            try
+            {
+                var settings = System.Text.Json.JsonSerializer.Deserialize<AppSettings>(
+                    System.IO.File.ReadAllText(settingsFilePath));
+
+                if (settings == null)
+                {
+                    return;
+                }
+
+                saveDirectory = !string.IsNullOrWhiteSpace(settings.SaveDirectory)
+                    && System.IO.Directory.Exists(settings.SaveDirectory)
+                    ? settings.SaveDirectory
+                    : null;
+                pdfHeader = settings.Header ?? string.Empty;
+                pdfHeaderAlignment = NormalizeAlignment(settings.HeaderAlignment);
+                pdfFooter = settings.Footer ?? string.Empty;
+                pdfFooterAlignment = NormalizeAlignment(settings.FooterAlignment);
+                printPageNumbers = settings.PageNumber;
+
+                if (!string.IsNullOrWhiteSpace(settings.SaveDirectory) && saveDirectory == null)
+                {
+                    MessageBox.Show(
+                        $"設定された保存先フォルダーが見つかりません。既定のドキュメントフォルダーを使用します。\n\n{settings.SaveDirectory}",
+                        "保存先設定",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"保存先設定を読み込めませんでした。既定のドキュメントフォルダーを使用します。\n\n{ex.Message}",
+                    "設定読み込みエラー",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private string GetInitialSaveDirectory()
+        {
+            if (!string.IsNullOrWhiteSpace(saveDirectory))
+            {
+                if (System.IO.Directory.Exists(saveDirectory))
+                {
+                    return saveDirectory;
+                }
+
+                saveDirectory = null;
+                MessageBox.Show(
+                    "設定された保存先フォルダーが見つからないため、既定のドキュメントフォルダーを使用します。",
+                    "保存先設定",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+
+            var documentsDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            return System.IO.Directory.Exists(documentsDirectory)
+                ? documentsDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        }
+
+        private void SaveDirectorySettings_Click(object sender, RoutedEventArgs e)
+        {
+            var directoryTextBox = new TextBox
+            {
+                Text = saveDirectory ?? string.Empty,
+                IsReadOnly = true,
+                MinWidth = 300,
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            var browseButton = new Button
+            {
+                Content = "参照...",
+                Margin = new Thickness(8, 0, 0, 0),
+                Padding = new Thickness(10, 4, 10, 4)
+            };
+            browseButton.Click += (_, _) =>
+            {
+                var folderDialog = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "MarkdownとPDFの保存先フォルダーを選択",
+                    InitialDirectory = System.IO.Directory.Exists(directoryTextBox.Text)
+                        ? directoryTextBox.Text
+                        : GetInitialSaveDirectory()
+                };
+                if (folderDialog.ShowDialog(this) == true)
+                {
+                    directoryTextBox.Text = folderDialog.FolderName;
+                }
+            };
+
+            var headerTextBox = new TextBox { Text = pdfHeader, MinWidth = 280, Margin = new Thickness(0, 4, 0, 12) };
+            var headerAlignmentComboBox = CreateAlignmentComboBox(pdfHeaderAlignment);
+            var footerTextBox = new TextBox { Text = pdfFooter, MinWidth = 280, Margin = new Thickness(0, 4, 0, 12) };
+            var footerAlignmentComboBox = CreateAlignmentComboBox(pdfFooterAlignment);
+            var pageNumberCheckBox = new CheckBox
+            {
+                Content = "PDFにページ番号を表示する",
+                IsChecked = printPageNumbers,
+                Margin = new Thickness(0, 4, 0, 16)
+            };
+
+            var content = new StackPanel { Margin = new Thickness(16) };
+            content.Children.Add(new TextBlock { Text = "保存先フォルダー" });
+            var directoryPanel = new DockPanel { Margin = new Thickness(0, 4, 0, 16) };
+            DockPanel.SetDock(browseButton, Dock.Right);
+            directoryPanel.Children.Add(browseButton);
+            directoryPanel.Children.Add(directoryTextBox);
+            content.Children.Add(directoryPanel);
+            content.Children.Add(new TextBlock { Text = "PDFヘッダー（空欄可）" });
+            content.Children.Add(CreateHeaderFooterRow(headerTextBox, headerAlignmentComboBox));
+            content.Children.Add(new TextBlock { Text = "PDFフッター（空欄可）" });
+            content.Children.Add(CreateHeaderFooterRow(footerTextBox, footerAlignmentComboBox));
+            content.Children.Add(pageNumberCheckBox);
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var saveButton = new Button { Content = "保存", IsDefault = true, MinWidth = 72, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(8, 4, 8, 4) };
+            var cancelButton = new Button { Content = "キャンセル", IsCancel = true, MinWidth = 72, Padding = new Thickness(8, 4, 8, 4) };
+            buttons.Children.Add(saveButton);
+            buttons.Children.Add(cancelButton);
+            content.Children.Add(buttons);
+
+            var dialog = new Window
+            {
+                Title = "設定",
+                Width = 480,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Owner = this,
+                Content = content
+            };
+            saveButton.Click += (_, _) =>
+            {
+                var selectedDirectory = directoryTextBox.Text.Trim();
+                if (!string.IsNullOrEmpty(selectedDirectory) && !System.IO.Directory.Exists(selectedDirectory))
+                {
+                    MessageBox.Show("選択した保存先フォルダーが見つかりません。", "入力内容の確認", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                dialog.DialogResult = true;
+            };
+
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var selectedDirectory = directoryTextBox.Text.Trim();
+            try
+            {
+                var settingsDirectory = System.IO.Path.GetDirectoryName(settingsFilePath)
+                    ?? throw new InvalidOperationException("設定ファイルの保存先を特定できません。");
+                System.IO.Directory.CreateDirectory(settingsDirectory);
+                var newSettings = new AppSettings
+                {
+                    SaveDirectory = string.IsNullOrEmpty(selectedDirectory) ? null : selectedDirectory,
+                    Header = headerTextBox.Text,
+                    HeaderAlignment = GetSelectedAlignment(headerAlignmentComboBox),
+                    Footer = footerTextBox.Text,
+                    FooterAlignment = GetSelectedAlignment(footerAlignmentComboBox),
+                    PageNumber = pageNumberCheckBox.IsChecked == true
+                };
+                var settingsJson = System.Text.Json.JsonSerializer.Serialize(
+                    newSettings,
+                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                System.IO.File.WriteAllText(settingsFilePath, settingsJson);
+
+                saveDirectory = newSettings.SaveDirectory;
+                pdfHeader = newSettings.Header ?? string.Empty;
+                pdfHeaderAlignment = NormalizeAlignment(newSettings.HeaderAlignment);
+                pdfFooter = newSettings.Footer ?? string.Empty;
+                pdfFooterAlignment = NormalizeAlignment(newSettings.FooterAlignment);
+                printPageNumbers = newSettings.PageNumber;
+                MessageBox.Show("設定を保存しました。", "設定", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"設定を保存できませんでした。\n\n{ex.Message}",
+                    "設定保存エラー",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private static ComboBox CreateAlignmentComboBox(string alignment)
+        {
+            var comboBox = new ComboBox
+            {
+                Width = 100,
+                Margin = new Thickness(8, 4, 0, 12),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            comboBox.Items.Add(new ComboBoxItem { Content = "左端", Tag = "left" });
+            comboBox.Items.Add(new ComboBoxItem { Content = "中央", Tag = "center" });
+            comboBox.Items.Add(new ComboBoxItem { Content = "右端", Tag = "right" });
+            comboBox.SelectedItem = comboBox.Items
+                .Cast<ComboBoxItem>()
+                .First(item => string.Equals(item.Tag as string, NormalizeAlignment(alignment), StringComparison.Ordinal));
+            return comboBox;
+        }
+
+        private static StackPanel CreateHeaderFooterRow(TextBox textBox, ComboBox alignmentComboBox)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(textBox);
+            row.Children.Add(alignmentComboBox);
+            return row;
+        }
+
+        private static string GetSelectedAlignment(ComboBox comboBox)
+        {
+            return NormalizeAlignment((comboBox.SelectedItem as ComboBoxItem)?.Tag as string);
+        }
+
+        private static string NormalizeAlignment(string? alignment)
+        {
+            return alignment is "center" or "right" ? alignment : "left";
+        }
+
+        private void PreviewBrowser_NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
+        {
+            if (!IsHttpUri(e.Uri))
+            {
+                return;
+            }
+
+            e.Cancel = true;
+            OpenLinkInDefaultBrowser(e.Uri);
+        }
+
+        private void PreviewBrowser_NewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
+        {
+            if (!IsHttpUri(e.Uri))
+            {
+                return;
+            }
+
+            e.Handled = true;
+            OpenLinkInDefaultBrowser(e.Uri);
+        }
+
+        private static bool IsHttpUri(string uri)
+        {
+            return Uri.TryCreate(uri, UriKind.Absolute, out var parsedUri)
+                && (parsedUri.Scheme == Uri.UriSchemeHttp || parsedUri.Scheme == Uri.UriSchemeHttps);
+        }
+
+        private void OpenLinkInDefaultBrowser(string uri)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = uri,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"リンクを既定のブラウザーで開けませんでした。\n\n{ex.Message}",
+                    "リンクを開けません",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
         }
 
         private async void InitializeWebView2Async()
@@ -69,6 +361,10 @@ namespace MK_to_PDF
 
                 // ダークモードをWebView2に適用しない（OSのダークモード設定に関わらず常にライト表示）
                 PreviewBrowser.CoreWebView2.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Light;
+                PreviewBrowser.CoreWebView2.NavigationStarting += PreviewBrowser_NavigationStarting;
+                PreviewBrowser.CoreWebView2.NewWindowRequested += PreviewBrowser_NewWindowRequested;
+                PreviewBrowser.CoreWebView2.NavigationCompleted += PreviewBrowser_NavigationCompleted;
+                PreviewBrowser.CoreWebView2.WebMessageReceived += PreviewBrowser_WebMessageReceived;
 
                 System.Diagnostics.Debug.WriteLine("[WebView2] 初期化完了");
 
@@ -197,6 +493,17 @@ namespace MK_to_PDF
             page-break-inside: avoid;
             break-inside: avoid;
         }}
+        .contains-task-list {{
+            list-style: none;
+            padding-left: 1.5em;
+        }}
+        .task-list-item input[type=""checkbox""] {{
+            accent-color: #2196F3;
+            width: 1em;
+            height: 1em;
+            vertical-align: middle;
+            margin: 0 0.4em 0 0;
+        }}
         /* 段落が分割されにくくする */
         p {{
             orphans: 3;
@@ -244,7 +551,8 @@ namespace MK_to_PDF
             }}
             /* ページ余白の設定 */
             @page {{
-                margin: 2cm;
+                margin: 0.8in 0.1in;
+                {GetPdfPageMarginBoxCss()}
             }}
             /* 印刷時はスクロールバーを完全に非表示 */
             * {{
@@ -320,6 +628,7 @@ namespace MK_to_PDF
                 {
                     Filter = "PDF files (*.pdf)|*.pdf",
                     Title = "PDFファイルを保存",
+                    InitialDirectory = GetInitialSaveDirectory(),
                     FileName = string.IsNullOrEmpty(currentFilePath) 
                         ? "output.pdf" 
                         : System.IO.Path.GetFileNameWithoutExtension(currentFilePath) + ".pdf"
@@ -339,10 +648,11 @@ namespace MK_to_PDF
                     // PDF出力設定
                     var printSettings = PreviewBrowser.CoreWebView2.Environment.CreatePrintSettings();
                     printSettings.ShouldPrintBackgrounds = true; // 背景色を印刷
-                    printSettings.MarginTop = 2.0;
-                    printSettings.MarginBottom = 2.0;
-                    printSettings.MarginLeft = 2.0;
-                    printSettings.MarginRight = 2.0;
+                    printSettings.MarginTop = 0.8;
+                    printSettings.MarginBottom = 0.8;
+                    printSettings.MarginLeft = 0.1;
+                    printSettings.MarginRight = 0.1;
+                    printSettings.ShouldPrintHeaderAndFooter = false;
 
                     System.Diagnostics.Debug.WriteLine("[PDF出力] 設定完了、PDF生成開始");
 
@@ -452,10 +762,20 @@ namespace MK_to_PDF
 
         private void ClearFile_Click(object sender, RoutedEventArgs e)
         {
-            MarkdownEditor.Clear();
-            SelectedFileLabel.Text = string.Empty;
-            PreviewBrowser.NavigateToString(WrapHtml(string.Empty));
-            currentFilePath = null;
+            MessageBoxResult result = MessageBox.Show("文章をクリアしますか?","クリア通知",MessageBoxButton.YesNo);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                MarkdownEditor.Clear();
+                SelectedFileLabel.Text = string.Empty;
+                PreviewBrowser.NavigateToString(WrapHtml(string.Empty));
+                currentFilePath = null;
+            }
+            else if (result == MessageBoxResult.No)
+            {
+                return;
+            }
+
         }
 
         private void SaveMarkdown_Click(object sender, RoutedEventArgs e)
@@ -473,6 +793,7 @@ namespace MK_to_PDF
                 {
                     Filter = "Markdown files (*.md)|*.md|Markdown files (*.markdown)|*.markdown|All files (*.*)|*.*",
                     Title = "Markdownファイルを保存",
+                    InitialDirectory = GetInitialSaveDirectory(),
                     FileName = string.IsNullOrEmpty(currentFilePath) 
                         ? "document.md" 
                         : System.IO.Path.GetFileNameWithoutExtension(currentFilePath) + ".md",
@@ -528,6 +849,7 @@ namespace MK_to_PDF
             // Markdigを使用してマークダウンをHTMLに変換
             var pipeline = new MarkdownPipelineBuilder()
                 .UseAdvancedExtensions() // テーブル、リスト、タスクリストなどの拡張機能を有効化
+                .UseTaskLists()
                 .Build();
 
             var html = Markdown.ToHtml(markdown, pipeline);
@@ -925,59 +1247,102 @@ namespace MK_to_PDF
             // 簡易的に現在位置に挿入（厳密には正確ではないが、おおよその位置は合う）
         }
 
-        private void PageBreakHelp_Click(object sender, RoutedEventArgs e)
+        private void InsertTable_Click(object sender, RoutedEventArgs e)
         {
-            var helpMessage = @"📄 ページ区切り機能の使い方
+            var rowsTextBox = new TextBox { Text = "3", Width = 70, Margin = new Thickness(8, 0, 0, 0) };
+            var columnsTextBox = new TextBox { Text = "3", Width = 70, Margin = new Thickness(8, 0, 0, 0) };
+            var dialog = new Window
+            {
+                Title = "Markdown表を挿入",
+                Width = 300,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                ResizeMode = ResizeMode.NoResize,
+                ShowInTaskbar = false,
+                Owner = this
+            };
 
-マークダウン内で任意の位置にページ区切りを挿入できます。
+            var content = new StackPanel { Margin = new Thickness(16) };
+            var columnsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 12) };
+            columnsPanel.Children.Add(new TextBlock { Text = "列数 (1～10)", VerticalAlignment = VerticalAlignment.Center });
+            columnsPanel.Children.Add(columnsTextBox);
+            var rowsPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 16) };
+            rowsPanel.Children.Add(new TextBlock { Text = "データ行数 (1～20)", VerticalAlignment = VerticalAlignment.Center });
+            rowsPanel.Children.Add(rowsTextBox);
+            content.Children.Add(columnsPanel);
+            content.Children.Add(rowsPanel);
 
-【記述方法】
-マークダウンファイルの好きな位置に以下を記述してください：
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var insertButton = new Button { Content = "挿入", IsDefault = true, MinWidth = 72, Margin = new Thickness(0, 0, 8, 0), Padding = new Thickness(8, 4, 8, 4) };
+            insertButton.Click += (_, _) =>
+            {
+                if (!int.TryParse(columnsTextBox.Text, out var columns) || columns is < 1 or > 10
+                    || !int.TryParse(rowsTextBox.Text, out var rows) || rows is < 1 or > 20)
+                {
+                    MessageBox.Show("列数は1～10、データ行数は1～20で入力してください。", "入力内容の確認", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
 
-<!-- PAGE_BREAK -->
+                dialog.DialogResult = true;
+            };
+            var cancelButton = new Button { Content = "キャンセル", IsCancel = true, MinWidth = 72, Padding = new Thickness(8, 4, 8, 4) };
+            buttons.Children.Add(insertButton);
+            buttons.Children.Add(cancelButton);
+            content.Children.Add(buttons);
+            dialog.Content = content;
 
-または、エディタヘッダーの「📄 改ページを挿入」ボタンをクリック！
+            if (dialog.ShowDialog() != true)
+            {
+                return;
+            }
 
-【例】
-# 第1章
+            var columnCount = int.Parse(columnsTextBox.Text);
+            var dataRowCount = int.Parse(rowsTextBox.Text);
+            var table = new StringBuilder();
+            table.Append('|');
+            for (var column = 1; column <= columnCount; column++)
+            {
+                table.Append($" 列{column} |");
+            }
+            table.AppendLine();
+            table.Append('|');
+            for (var column = 0; column < columnCount; column++)
+            {
+                table.Append(" --- |");
+            }
+            table.AppendLine();
+            for (var row = 0; row < dataRowCount; row++)
+            {
+                table.Append('|');
+                for (var column = 0; column < columnCount; column++)
+                {
+                    table.Append("  |");
+                }
+                if (row < dataRowCount - 1)
+                {
+                    table.AppendLine();
+                }
+            }
 
-これは最初のページの内容です。
+            var text = MarkdownEditor.Text ?? string.Empty;
+            var selectionStart = MarkdownEditor.SelectionStart;
+            var selectionLength = MarkdownEditor.SelectionLength;
+            var before = text[..selectionStart];
+            var after = text[(selectionStart + selectionLength)..];
+            var leadingNewlines = before.Length == 0 || before.EndsWith("\n\n", StringComparison.Ordinal)
+                ? string.Empty
+                : before.EndsWith('\n') ? "\n" : "\n\n";
+            var trailingNewlines = after.Length == 0 || after.StartsWith("\n\n", StringComparison.Ordinal)
+                ? string.Empty
+                : after.StartsWith('\n') ? "\n" : "\n\n";
+            var insertedTable = table.ToString();
 
-<!-- PAGE_BREAK -->
-
-# 第2章
-
-これは2ページ目の内容です。
-
-【マーカーの違い】
-🔴 赤い破線ボックス
-  → 手動で挿入した改ページ位置
-  → PDF出力時に必ず改ページされます
-  → この位置は確定です
-
-🔵 青い破線（📏 ページ境界を表示 ON時）
-  → おおよそ40行ごとに表示される改ページ候補位置
-  → 参考情報として表示
-  → 実際の改ページ位置は印刷時に最終的に決まります
-  → 長いコードブロックも検出されます
-
-【ページ境界の確認】
-「📏 ページ境界を表示」にチェックを入れると、
-おおよそA4サイズ1ページ分（約40行）ごとに
-青い線で境界を表示します。長いコードブロックやテーブルも
-適切に検出されます。
-
-【注意】
-青い境界線はあくまで目安です。実際のPDF出力では、
-フォントサイズやブラウザの設定により若干ずれる場合があります。
-正確な位置で区切りたい場合は、赤い手動マーカーを使用してください。
-
-【簡単挿入】
-エディタのヘッダーにある「📄 改ページを挿入」ボタンを
-クリックすると、カーソル位置に自動的に挿入されます。
-手動マーカーを挿入すると、青い境界線が即座に再計算されます。";
-
-            MessageBox.Show(helpMessage, "ページ区切りヘルプ", MessageBoxButton.OK, MessageBoxImage.Information);
+            debounceTimer?.Stop();
+            MarkdownEditor.Text = before + leadingNewlines + insertedTable + trailingNewlines + after;
+            debounceTimer?.Stop();
+            MarkdownEditor.CaretIndex = before.Length + leadingNewlines.Length + insertedTable.Length;
+            MarkdownEditor.Focus();
+            RefreshPreview();
         }
 
         private void InsertPageBreak_Click(object sender, RoutedEventArgs e)
@@ -1017,6 +1382,37 @@ namespace MK_to_PDF
             );
         }
 
+        private string GetPdfPageMarginBoxCss()
+        {
+            var rules = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(pdfHeader))
+            {
+                rules.Append($"@top-{pdfHeaderAlignment} {{ content: '{EscapeCssString(pdfHeader)}'; text-align: {pdfHeaderAlignment}; }}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(pdfFooter) || printPageNumbers)
+            {
+                var footerContent = EscapeCssString(pdfFooter);
+                if (printPageNumbers)
+                {
+                    footerContent += (footerContent.Length > 0 ? "  ·  " : string.Empty) + "' counter(page) '";
+                }
+
+                rules.Append($"@bottom-{pdfFooterAlignment} {{ content: '{footerContent}'; text-align: {pdfFooterAlignment}; }}");
+            }
+
+            return rules.ToString();
+        }
+
+        private static string EscapeCssString(string value)
+        {
+            return value
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("'", "\\'", StringComparison.Ordinal)
+                .Replace("\r", string.Empty, StringComparison.Ordinal)
+                .Replace("\n", "\\A ", StringComparison.Ordinal);
+        }
+
         private void ShowPageBoundaries_Changed(object sender, RoutedEventArgs e)
         {
             showPageBoundaries = ShowPageBoundariesCheckBox.IsChecked == true;
@@ -1032,12 +1428,145 @@ namespace MK_to_PDF
                 return; // WebView2が初期化されるまで待機
             }
 
-            // プレビューを更新（ページ境界線を再計算）
             var markdown = MarkdownEditor.Text ?? string.Empty;
             var html = SimpleMarkdownToHtml(markdown);
-
-            // WebView2でHTMLを直接設定
             PreviewBrowser.NavigateToString(WrapHtml(html));
+        }
+
+        private async void PreviewBrowser_NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (!e.IsSuccess || PreviewBrowser.CoreWebView2 == null)
+            {
+                return;
+            }
+
+            var scrollPercentage = lastPreviewScrollPercentage.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            var script = $@"
+                (function() {{
+                    if (!window.__markdownScrollSyncInstalled) {{
+                        window.__markdownScrollSyncInstalled = true;
+                        var scrollTimer;
+                        var sendSelection = function() {{
+                            var selectedText = window.getSelection().toString();
+                            if (selectedText) window.chrome.webview.postMessage('selection:' + selectedText);
+                        }};
+                        document.addEventListener('mouseup', sendSelection);
+                        document.addEventListener('keyup', sendSelection);
+                        window.addEventListener('scroll', function() {{
+                            clearTimeout(scrollTimer);
+                            scrollTimer = setTimeout(function() {{
+                                var maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+                                window.chrome.webview.postMessage('scroll:' + String(window.scrollY / maxScroll));
+                            }}, 40);
+                        }}, {{ passive: true }});
+                    }}
+                    var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                    window.scrollTo(0, maxScroll * {scrollPercentage});
+                }})();";
+
+            try
+            {
+                await PreviewBrowser.CoreWebView2.ExecuteScriptAsync(script);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[スクロール同期] プレビュー位置復元エラー: {ex.Message}");
+            }
+        }
+
+        private void PreviewBrowser_WebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+        {
+            var message = e.TryGetWebMessageAsString();
+            if (message.StartsWith("selection:", StringComparison.Ordinal))
+            {
+                HighlightMarkdownSelection(message["selection:".Length..]);
+                return;
+            }
+
+            if (!message.StartsWith("scroll:", StringComparison.Ordinal)
+                || !isScrollSyncEnabled || markdownEditorScrollViewer == null
+                || !double.TryParse(message["scroll:".Length..], System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var percentage))
+            {
+                return;
+            }
+
+            lastPreviewScrollPercentage = Math.Clamp(percentage, 0, 1);
+            var targetOffset = markdownEditorScrollViewer.ScrollableHeight * lastPreviewScrollPercentage;
+            if (Math.Abs(markdownEditorScrollViewer.VerticalOffset - targetOffset) > 1)
+            {
+                markdownEditorScrollViewer.ScrollToVerticalOffset(targetOffset);
+            }
+        }
+
+        private void HighlightMarkdownSelection(string selectedText)
+        {
+            if (string.IsNullOrWhiteSpace(selectedText))
+            {
+                return;
+            }
+
+            var markdown = MarkdownEditor.Text ?? string.Empty;
+            var currentPosition = markdownEditorScrollViewer != null && markdownEditorScrollViewer.ScrollableHeight > 0
+                ? (int)(markdown.Length * markdownEditorScrollViewer.VerticalOffset / markdownEditorScrollViewer.ScrollableHeight)
+                : 0;
+            var matchIndex = FindClosestOccurrence(markdown, selectedText, currentPosition);
+            var matchLength = selectedText.Length;
+
+            if (matchIndex < 0)
+            {
+                var words = System.Text.RegularExpressions.Regex.Matches(selectedText, @"[\p{L}\p{N}_]+");
+                var bestLength = 0;
+                foreach (System.Text.RegularExpressions.Match word in words)
+                {
+                    if (word.Length > bestLength)
+                    {
+                        var sourceIndex = FindClosestOccurrence(markdown, word.Value, currentPosition);
+                        if (sourceIndex >= 0)
+                        {
+                            matchIndex = sourceIndex;
+                            matchLength = word.Length;
+                            bestLength = word.Length;
+                        }
+                    }
+                }
+            }
+
+            if (matchIndex < 0)
+            {
+                return;
+            }
+
+            MarkdownEditor.Focus();
+            MarkdownEditor.Select(matchIndex, matchLength);
+            var lineNumber = markdown.AsSpan(0, matchIndex).Count('\n');
+            MarkdownEditor.ScrollToLine(lineNumber);
+        }
+
+        private static int FindClosestOccurrence(string source, string value, int expectedIndex)
+        {
+            var closestIndex = -1;
+            var closestDistance = int.MaxValue;
+            var searchIndex = 0;
+            while (searchIndex < source.Length)
+            {
+                var foundIndex = source.IndexOf(value, searchIndex, StringComparison.OrdinalIgnoreCase);
+                if (foundIndex < 0)
+                {
+                    break;
+                }
+
+                var distance = Math.Abs(foundIndex - expectedIndex);
+                if (distance < closestDistance)
+                {
+                    closestIndex = foundIndex;
+                    closestDistance = distance;
+                }
+
+                searchIndex = foundIndex + 1;
+            }
+
+            return closestIndex;
         }
 
         // スクロール同期機能
@@ -1059,45 +1588,28 @@ namespace MK_to_PDF
 
         private async void MarkdownEditor_ScrollChanged(object sender, ScrollChangedEventArgs e)
         {
-            if (!isScrollSyncEnabled || !isWebView2Initialized || isSyncingScroll)
+            var scrollViewer = e.OriginalSource as ScrollViewer;
+            if (!isScrollSyncEnabled || !isWebView2Initialized || scrollViewer == null
+                || PreviewBrowser.CoreWebView2 == null)
+            {
                 return;
+            }
 
             try
             {
-                isSyncingScroll = true;
-
-                // TextBoxのスクロール位置を取得
-                var scrollViewer = e.OriginalSource as ScrollViewer;
-                if (scrollViewer == null) return;
-
-                // スクロール位置の割合を計算（0.0〜1.0）
-                double scrollPercentage = scrollViewer.VerticalOffset / Math.Max(1, scrollViewer.ScrollableHeight);
-
-                // JavaScriptでプレビュー側をスクロール
-                string script = $@"
+                var scrollPercentage = scrollViewer.VerticalOffset / Math.Max(1, scrollViewer.ScrollableHeight);
+                lastPreviewScrollPercentage = Math.Clamp(scrollPercentage, 0, 1);
+                var percentageText = lastPreviewScrollPercentage.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+                var script = $@"
                     (function() {{
-                        var scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-                        var targetScroll = scrollHeight * {scrollPercentage.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)};
-                        window.scrollTo({{
-                            top: targetScroll,
-                            behavior: 'auto'
-                        }});
-                    }})();
-                ";
-
+                        var maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                        window.scrollTo(0, maxScroll * {percentageText});
+                    }})();";
                 await PreviewBrowser.CoreWebView2.ExecuteScriptAsync(script);
-
-                System.Diagnostics.Debug.WriteLine($"[スクロール同期] エディタ:{scrollPercentage:P0} → プレビュー同期");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[スクロール同期] エラー: {ex.Message}");
-            }
-            finally
-            {
-                // 少し遅延してからフラグをリセット（無限ループ防止）
-                await Task.Delay(50);
-                isSyncingScroll = false;
             }
         }
 
@@ -1124,6 +1636,27 @@ namespace MK_to_PDF
             });
 
             return result;
+        }
+
+        private sealed class AppSettings
+        {
+            [System.Text.Json.Serialization.JsonPropertyName("SaveDirectory")]
+            public string? SaveDirectory { get; set; }
+
+            [System.Text.Json.Serialization.JsonPropertyName("header")]
+            public string? Header { get; set; } = string.Empty;
+
+            [System.Text.Json.Serialization.JsonPropertyName("header-alignment")]
+            public string? HeaderAlignment { get; set; } = "left";
+
+            [System.Text.Json.Serialization.JsonPropertyName("footer")]
+            public string? Footer { get; set; } = string.Empty;
+
+            [System.Text.Json.Serialization.JsonPropertyName("footer-alignment")]
+            public string? FooterAlignment { get; set; } = "left";
+
+            [System.Text.Json.Serialization.JsonPropertyName("page-number")]
+            public bool PageNumber { get; set; }
         }
 
         private class EncodingItem

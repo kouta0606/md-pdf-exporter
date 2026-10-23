@@ -112,10 +112,10 @@
                 <!-- タイトルバー -->
                 <TextBlock Grid.Row="0" 
                            Text="📝 Markdown to PDF Converter" 
-                           FontSize="20" 
+                           FontSize="18" 
                            FontWeight="Bold" 
                            Foreground="#212121"
-                           Margin="0,0,0,12"/>
+                           Margin="0,0,0,10"/>
 
                 <!-- コントロールバー -->
                 <Grid Grid.Row="1">
@@ -162,11 +162,11 @@
                                 Style="{StaticResource AccentButton}"
                                 FontWeight="Bold"/>
 
-                        <Button x:Name="PageBreakHelpButton" 
-                                Content="❓ ページ区切りヘルプ" 
-                                Click="PageBreakHelp_Click" 
+                        <Button x:Name="SaveDirectorySettingsButton"
+                                Content="⚙ 設定"
+                                Click="SaveDirectorySettings_Click"
                                 Style="{StaticResource ModernButton}"
-                                Background="#FF9800"/>
+                                Background="#607D8B"/>
 
                         <CheckBox x:Name="ShowPageBoundariesCheckBox" 
                                   Content="📏 ページ境界を表示" 
@@ -176,7 +176,7 @@
                                   Unchecked="ShowPageBoundaries_Changed"
                                   FontWeight="Medium"
                                   Foreground="#424242"
-                                  IsChecked="True"/>
+                                  IsChecked="False"/>
                     </StackPanel>
 
                     <!-- 右側：ファイル情報 -->
@@ -220,6 +220,18 @@
                             <TextBlock Grid.Column="0" Text="✏️ Markdown Editor" FontWeight="SemiBold" Foreground="#424242" VerticalAlignment="Center"/>
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button x:Name="InsertTableButton"
+                                        Content="▦ 表を挿入"
+                                        Click="InsertTable_Click"
+                                        Background="#4A90A4"
+                                        Foreground="White"
+                                        BorderThickness="0"
+                                        Padding="12,4"
+                                        Margin="0,0,6,0"
+                                        Cursor="Hand"
+                                        FontSize="11"
+                                        FontWeight="Medium"
+                                        ToolTip="カーソル位置にMarkdown表を挿入します"/>
                                 <Button x:Name="InsertPageBreakButton" 
                                         Content="📄 改ページを挿入" 
                                         Click="InsertPageBreak_Click"
