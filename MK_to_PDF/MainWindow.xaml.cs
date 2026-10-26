@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using Markdig;
@@ -1245,6 +1245,153 @@ namespace MK_to_PDF
         {
             // 実際には複雑なので、この実装では後続のブロックで調整
             // 簡易的に現在位置に挿入（厳密には正確ではないが、おおよその位置は合う）
+        }
+
+        private void ApplyBold_Click(object sender, RoutedEventArgs e) => ApplyInlineMarkdown("**", "**", "太字");
+
+        private void ApplyStrikeThrough_Click(object sender, RoutedEventArgs e) => ApplyInlineMarkdown("~~", "~~", "取り消し線");
+
+        private void ApplyCode_Click(object sender, RoutedEventArgs e) => ApplyInlineMarkdown("`", "`", "コード");
+
+        private void HeadingComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Deprecated: see ApplyHeading1_Click, ApplyHeading2_Click, ApplyHeading3_Click instead
+        }
+
+        private void ApplyLinePrefix_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button { Tag: string prefix })
+            {
+                ApplyLinePrefix(prefix, replaceHeading: false);
+            }
+        }
+
+        private void ApplyHeading1_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("# ", replaceHeading: true);
+        private void ApplyHeading2_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("## ", replaceHeading: true);
+        private void ApplyHeading3_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("### ", replaceHeading: true);
+        private void ApplyQuote_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("> ", replaceHeading: false);
+        private void ApplyList_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("- ", replaceHeading: false);
+        private void ApplyChecklist_Click(object sender, RoutedEventArgs e) => ApplyLinePrefix("- [ ] ", replaceHeading: false);
+
+        // 選択済みの文字の上を左クリックしたとき、書式メニューを表示する
+        private void MarkdownEditor_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (MarkdownEditor.SelectionLength == 0 || MarkdownEditor.ContextMenu == null)
+            {
+                return;
+            }
+
+            var index = MarkdownEditor.GetCharacterIndexFromPoint(e.GetPosition(MarkdownEditor), false);
+            if (index < MarkdownEditor.SelectionStart || index >= MarkdownEditor.SelectionStart + MarkdownEditor.SelectionLength)
+            {
+                return;
+            }
+
+            MarkdownEditor.ContextMenu.PlacementTarget = MarkdownEditor;
+            MarkdownEditor.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
+            MarkdownEditor.ContextMenu.IsOpen = true;
+            e.Handled = true;
+        }
+
+        private void ShowToolsMenu_Click(object sender, RoutedEventArgs e)
+        {
+            if (MarkdownEditor.ContextMenu != null)
+            {
+                MarkdownEditor.ContextMenu.PlacementTarget = ToolsMenuButton;
+                MarkdownEditor.ContextMenu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+                MarkdownEditor.ContextMenu.IsOpen = true;
+            }
+        }
+
+        private void ApplyInlineMarkdown(string prefix, string suffix, string placeholder)
+        {
+            var selectedText = MarkdownEditor.SelectedText;
+            if (selectedText.Length == 0)
+            {
+                selectedText = placeholder;
+            }
+
+            var replacement = prefix + selectedText + suffix;
+            ReplaceMarkdownSelection(replacement, prefix.Length, selectedText.Length);
+            MarkdownEditor.Focus();
+        }
+
+        private void InsertLink_Click(object sender, RoutedEventArgs e)
+        {
+            var linkText = MarkdownEditor.SelectedText;
+            if (linkText.Length == 0)
+            {
+                linkText = "リンクテキスト";
+            }
+
+            const string url = "https://example.com";
+            var replacement = $"[{linkText}]({url})";
+            ReplaceMarkdownSelection(replacement, linkText.Length + 3, url.Length);
+        }
+
+        private void InsertLineBreak_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedText = MarkdownEditor.SelectedText;
+            var replacement = selectedText + "<br>";
+            ReplaceMarkdownSelection(replacement, replacement.Length, 0);
+        }
+
+        private void InsertLineBreakWithNewline_Click(object sender, RoutedEventArgs e)
+        {
+            var selectedText = MarkdownEditor.SelectedText;
+            var replacement = Environment.NewLine + "<br>" + selectedText;
+            ReplaceMarkdownSelection(replacement, replacement.Length, 0);
+        }
+
+        private void ApplyLinePrefix(string prefix, bool replaceHeading)
+        {
+            var text = MarkdownEditor.Text ?? string.Empty;
+            var selectionStart = MarkdownEditor.SelectionStart;
+            var selectionLength = MarkdownEditor.SelectionLength;
+            var lineStart = selectionStart == 0 ? 0 : text.LastIndexOf('\n', selectionStart - 1) + 1;
+            var selectionEnd = selectionStart + selectionLength;
+            var lineEnd = text.IndexOf('\n', selectionEnd);
+            if (lineEnd < 0)
+            {
+                lineEnd = text.Length;
+            }
+
+            var lines = text[lineStart..lineEnd].Split('\n');
+            var removePrefix = !replaceHeading && lines.All(line => line.StartsWith(prefix, StringComparison.Ordinal));
+            for (var index = 0; index < lines.Length; index++)
+            {
+                var line = lines[index];
+                if (replaceHeading)
+                {
+                    var headingEnd = 0;
+                    while (headingEnd < line.Length && line[headingEnd] == '#')
+                    {
+                        headingEnd++;
+                    }
+                    if (headingEnd is > 0 and <= 6 && headingEnd < line.Length && line[headingEnd] == ' ')
+                    {
+                        line = line[(headingEnd + 1)..];
+                    }
+                    lines[index] = prefix + line;
+                }
+                else
+                {
+                    lines[index] = removePrefix ? line[prefix.Length..] : prefix + line;
+                }
+            }
+
+            var replacement = string.Join('\n', lines);
+            ReplaceMarkdownSelection(replacement, selectionLength == 0
+                ? replaceHeading || !removePrefix ? prefix.Length : 0
+                : 0, selectionLength == 0 ? 0 : replacement.Length);
+        }
+
+        private void ReplaceMarkdownSelection(string replacement, int selectionOffset, int selectionLength)
+        {
+            var start = MarkdownEditor.SelectionStart;
+            MarkdownEditor.SelectedText = replacement;
+            MarkdownEditor.Select(start + selectionOffset, selectionLength);
+            MarkdownEditor.Focus();
         }
 
         private void InsertTable_Click(object sender, RoutedEventArgs e)
