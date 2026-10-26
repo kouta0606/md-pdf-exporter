@@ -968,7 +968,6 @@ namespace MK_to_PDF
             var reader = new System.IO.StringReader(html);
             string? line;
             var inPre = false;
-            var inCode = false;
             var inParagraph = false;
             var paragraphContent = new StringBuilder();
 
@@ -984,16 +983,6 @@ namespace MK_to_PDF
                 if (trimmed.EndsWith("</pre>"))
                 {
                     inPre = false;
-                }
-
-                // <code>の開始と終了を追跡
-                if (trimmed.StartsWith("<code"))
-                {
-                    inCode = true;
-                }
-                if (trimmed.EndsWith("</code>"))
-                {
-                    inCode = false;
                 }
 
                 // <p>の開始と終了を追跡
@@ -1332,8 +1321,8 @@ namespace MK_to_PDF
         private void InsertLineBreak_Click(object sender, RoutedEventArgs e)
         {
             var selectedText = MarkdownEditor.SelectedText;
-            var replacement = selectedText + "<br>";
-            ReplaceMarkdownSelection(replacement, replacement.Length, 0);
+            var replacement = "<br>" + selectedText;
+            ReplaceMarkdownSelection(replacement, "<br>".Length, selectedText.Length);
         }
 
         private void InsertLineBreakWithNewline_Click(object sender, RoutedEventArgs e)
