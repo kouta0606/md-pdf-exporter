@@ -1337,6 +1337,13 @@ namespace MK_to_PDF
             var text = MarkdownEditor.Text ?? string.Empty;
             var selectionStart = MarkdownEditor.SelectionStart;
             var selectionLength = MarkdownEditor.SelectionLength;
+
+            if (selectionLength == 0)
+            {
+                ReplaceMarkdownSelection(prefix, prefix.Length, 0);
+                return;
+            }
+
             var lineStart = selectionStart == 0 ? 0 : text.LastIndexOf('\n', selectionStart - 1) + 1;
             var selectionEnd = selectionStart + selectionLength;
             var lineEnd = text.IndexOf('\n', selectionEnd);
